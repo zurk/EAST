@@ -13,6 +13,8 @@ import functools
 import logging
 import collections
 
+from matplotlib import pyplot as plt
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -36,10 +38,10 @@ def get_host_info():
 def get_predictor(checkpoint_path):
     logger.info('loading model')
     import tensorflow as tf
-    import model
-    from icdar import restore_rectangle
-    import lanms
-    from eval import resize_image, sort_poly, detect
+    from EAST import model
+    from EAST.icdar import restore_rectangle
+    from EAST import lanms
+    from EAST.eval import resize_image, sort_poly, detect
 
     input_images = tf.placeholder(tf.float32, shape=[None, None, None, 3], name='input_images')
     global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
@@ -160,38 +162,65 @@ def index():
 
 
 def draw_illu(illu, rst):
+    mult = 1.2
+    cropped_text = []
+    # img_box = cv2.cvtColor(illu.copy(), cv2.COLOR_RGB2BGR)
+    img_box = illu.copy()
     for t in rst['text_lines']:
         d = np.array([t['x0'], t['y0'], t['x1'], t['y1'], t['x2'],
                       t['y2'], t['x3'], t['y3']], dtype='int32')
         d = d.reshape(-1, 2)
         cv2.polylines(illu, [d], isClosed=True, color=(255, 255, 0))
-    return illu
+
+        rect = cv2.minAreaRect(d)
+        box = np.int0(cv2.boxPoints(rect))
+
+        x1, y1 = np.min(box, axis=0)
+        x2, y2 = np.max(box, axis=0)
+
+        rotated = False
+        angle = rect[2]
+
+        if angle < -45:
+            angle += 90
+            rotated = True
+
+        center = int((x1 + x2) / 2), int((y1 + y2) / 2)
+        size = int(mult * (x2 - x1)), int(mult * (y2 - y1))
+        M = cv2.getRotationMatrix2D((size[0] / 2, size[1] / 2), angle, 1.0)
+        cropped = cv2.getRectSubPix(img_box, size, center)
+        cropped = cv2.warpAffine(cropped, M, size)
+        croppedW = rect[1][0] if not rotated else rect[1][1]
+        croppedH = rect[1][1] if not rotated else rect[1][0]
+        croppedRotated = cv2.getRectSubPix(cropped, (int(croppedW * mult), int(croppedH * mult)),
+                                           (size[0] / 2, size[1] / 2))
+        cropped_text.append(croppedRotated)
+
+    return illu, cropped_text
 
 
-def save_result(img, rst):
+def save_result(img, rst, name):
     session_id = str(uuid.uuid1())
-    dirpath = os.path.join(config.SAVE_DIR, session_id)
-    os.makedirs(dirpath)
+    name = name.split(".")
+    output_name = name[0] + "_" + session_id + "." + name[1]
+    output_name_text = name[0] + "_{}" + "_" + session_id + "." + name[1]
 
-    # save input image
-    output_path = os.path.join(dirpath, 'input.png')
-    cv2.imwrite(output_path, img)
+    illu, cropped_text = draw_illu(img.copy(), rst)
+    cv2.imwrite(os.path.join(config.SAVE_DIR, output_name), illu)
 
-    # save illustration
-    output_path = os.path.join(dirpath, 'output.png')
-    cv2.imwrite(output_path, draw_illu(img.copy(), rst))
+    for i, ct in enumerate(cropped_text):
+        cv2.imwrite(os.path.join(config.SAVE_DIR, output_name_text.format(i)), ct)
 
     # save json data
-    output_path = os.path.join(dirpath, 'result.json')
-    with open(output_path, 'w') as f:
+    output_name = os.path.join(config.SAVE_DIR, 'result_{}.json'.format(session_id))
+    with open(output_name, 'w') as f:
         json.dump(rst, f)
 
     rst['session_id'] = session_id
     return rst
 
 
-
-checkpoint_path = './east_icdar2015_resnet_v1_50_rbox'
+checkpoint_path = os.path.join(os.path.split(__file__)[0], 'east_icdar2015_resnet_v1_50_rbox')
 
 
 @app.route('/', methods=['POST'])
@@ -200,10 +229,11 @@ def index_post():
     import io
     bio = io.BytesIO()
     request.files['image'].save(bio)
+    name = request.files['image'].filename
     img = cv2.imdecode(np.frombuffer(bio.getvalue(), dtype='uint8'), 1)
     rst = get_predictor(checkpoint_path)(img)
 
-    save_result(img, rst)
+    save_result(img, rst, name)
     return render_template('index.html', session_id=rst['session_id'])
 
 
@@ -212,6 +242,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', default=8769, type=int)
     parser.add_argument('--checkpoint_path', default=checkpoint_path)
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
     checkpoint_path = args.checkpoint_path
 
@@ -221,6 +252,7 @@ def main():
 
     app.debug = False  # change this to True if you want to debug
     app.run('0.0.0.0', args.port)
+
 
 if __name__ == '__main__':
     main()

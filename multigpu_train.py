@@ -16,8 +16,8 @@ tf.app.flags.DEFINE_integer('save_checkpoint_steps', 1000, '')
 tf.app.flags.DEFINE_integer('save_summary_steps', 100, '')
 tf.app.flags.DEFINE_string('pretrained_model_path', None, '')
 
-import model
-import icdar
+from EAST import model
+from EAST import icdar
 
 FLAGS = tf.app.flags.FLAGS
 

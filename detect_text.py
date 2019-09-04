@@ -143,11 +143,11 @@ def get_predictor(checkpoint_path):
     return predictor
 
 
-def draw_illu(illu, rst):
-    mult = 1.2
+def draw_illu(illu, rst, recognizer):
+    mult = 1.0
     cropped_text = []
-    # img_box = cv2.cvtColor(illu.copy(), cv2.COLOR_RGB2BGR)
     img_box = illu.copy()
+    texts = []
     for t in rst['text_lines']:
         d = np.array([t['x0'], t['y0'], t['x1'], t['y1'], t['x2'],
                       t['y2'], t['x3'], t['y3']], dtype='int32')
@@ -176,9 +176,12 @@ def draw_illu(illu, rst):
         croppedH = rect[1][1] if not rotated else rect[1][0]
         croppedRotated = cv2.getRectSubPix(cropped, (int(croppedW * mult), int(croppedH * mult)),
                                            (size[0] / 2, size[1] / 2))
+        text = recognizer.recognize_text(croppedRotated)
+        texts.append(text)
         cropped_text.append(croppedRotated)
+        cv2.putText(illu, text, (int(t['x0']), int(t['y0'])),  cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2, cv2.LINE_AA)
 
-    return illu, cropped_text
+    return illu, cropped_text, texts
 
 
 class TextRecognizer:
@@ -218,23 +221,17 @@ class TextRecognizer:
         return process(image, self.network, self.char_map, self.xp, self)
 
 
-def save_result(img, rst, save_path, recognizer: TextRecognizer):
-    illu, cropped_text = draw_illu(img.copy(), rst)
+def save_result(img, rst, save_path, recognizer: TextRecognizer, save_cropped=False):
+    illu, cropped_text_imgs, cropped_texts = draw_illu(img.copy(), rst, recognizer)
     cv2.imwrite(save_path, illu)
 
     cropped_save_path = os.path.splitext(save_path)[0]
-    os.makedirs(cropped_save_path, exist_ok=True)
-    for i, ct in enumerate(cropped_text):
-        word = recognizer.recognize_text(ct)
-        cv2.imwrite(os.path.join(cropped_save_path, f"{i}-{word}.jpg"), ct)
-
-    # save json data
-    # output_name = os.path.join(config.SAVE_DIR, 'result_{}.json'.format(session_id))
-    # with open(output_name, 'w') as f:
-    #     json.dump(rst, f)
-
-    # rst['session_id'] = session_id
-    # return rst
+    if save_cropped:
+        os.makedirs(cropped_save_path, exist_ok=True)
+        for i, (ct, text) in enumerate(zip(cropped_text_imgs, cropped_texts)):
+            cv2.imwrite(os.path.join(cropped_save_path, f"{i}-{text}.jpg"), ct)
+    with open(f"{cropped_save_path}.txt", "w") as f:
+        f.write("\n".join(cropped_texts))
 
 
 def detect_text(input_path, output_path, checkpoint_path, recognizer):

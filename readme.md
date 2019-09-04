@@ -40,6 +40,9 @@ Please cite his [paper](https://arxiv.org/abs/1704.03155v2) if you find this use
 5. [Examples](#examples)
 
 ### Installation
+
+1. Depends on `libgeos-dev` (`sudo apt-get install libgeos-dev`) and tkinter python lib `sudo apt-get install python3-tk`
+1. Uses see library (https://github.com/zurk/see) to recognize text on cropped images. 
 1. Any version of tensorflow version > 1.0 should be ok.
 
 ### Download
@@ -64,7 +67,7 @@ See the examples in training_samples/**
 ### Demo
 If you've downloaded the pre-trained model, you can setup a demo server by
 ```
-python3 run_demo_server.py --checkpoint-path /tmp/east_icdar2015_resnet_v1_50_rbox/
+python3 run_demo_server.py --checkpoint_path /tmp/east_icdar2015_resnet_v1_50_rbox/
 ```
 Then open http://localhost:8769 for the web demo. Notice that the URL will change after you submitted an image.
 Something like `?r=49647854-7ac2-11e7-8bb7-80000210fe80` appends and that makes the URL persistent.
